@@ -61,7 +61,33 @@ conn.commit()
 print("DIM TABLE LOADED")
 
 tickers = sp["symbol"].tolist()
+print("Loading shares...")
 
+shares_data = []
+
+for t in tickers:
+    try:
+        info = yf.Ticker(t).fast_info
+        shares = info.get("shares")
+
+        if shares:
+            shares_data.append((t, int(shares)))
+    except:
+        pass
+
+for row in shares_data:
+    cur.execute(
+        """
+        INSERT INTO sp500_shares (symbol, shares, date)
+        VALUES (%s, %s, CURRENT_DATE)
+        ON CONFLICT (symbol)
+        DO UPDATE SET shares = EXCLUDED.shares
+        """,
+        row
+    )
+
+conn.commit()
+print("SHARES LOADED")
 # =========================
 # DOWNLOAD DATA
 # =========================
