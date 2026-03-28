@@ -2,15 +2,36 @@ import yfinance as yf
 import pandas as pd
 import psycopg2
 import os
+import requests
+from psycopg2.extras import execute_values
 
+# =========================
+# DB CONNECTION
+# =========================
 conn = psycopg2.connect(os.environ["DB_URL"])
 cur = conn.cursor()
 
-sp = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
-tickers = sp['Symbol'].tolist()
+# =========================
+# GET S&P 500 TICKERS (FIXED 403)
+# =========================
+url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
+headers = {
+    "User-Agent": "Mozilla/5.0"
+}
+
+response = requests.get(url, headers=headers)
+
+sp = pd.read_html(response.text)[0]
+tickers = sp["Symbol"].tolist()
+
+# =========================
+# DOWNLOAD DATA
+# =========================
 BATCH_SIZE = 25
 start_date = "2022-01-01"
+
+frames = []
 
 for i in range(0, len(tickers), BATCH_SIZE):
     batch = tickers[i:i+BATCH_SIZE]
@@ -21,22 +42,40 @@ for i in range(0, len(tickers), BATCH_SIZE):
     for t in batch:
         try:
             temp = df[t]["Close"].reset_index()
-
-            for _, row in temp.iterrows():
-                cur.execute(
-                    """
-                    INSERT INTO sp500_prices (date, ticker, value)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (date, ticker) DO NOTHING
-                    """,
-                    (row["Date"], t, row["Close"])
-                )
+            temp["ticker"] = t
+            temp.columns = ["date", "value", "ticker"]
+            frames.append(temp)
         except:
             pass
 
-    conn.commit()
+# =========================
+# COMBINE + CLEAN
+# =========================
+final_df = pd.concat(frames, ignore_index=True)
 
+final_df = final_df.dropna()
+final_df["date"] = pd.to_datetime(final_df["date"]).dt.date
+final_df = final_df[["date", "value", "ticker"]]
+
+print("Download complete. Starting insert...")
+
+# =========================
+# BULK INSERT (FAST)
+# =========================
+data_tuples = list(final_df.itertuples(index=False, name=None))
+
+execute_values(
+    cur,
+    """
+    INSERT INTO sp500_prices (date, value, ticker)
+    VALUES %s
+    ON CONFLICT DO NOTHING
+    """,
+    data_tuples
+)
+
+conn.commit()
 cur.close()
 conn.close()
 
-print("DONE")
+print("SP500 DATA LOADED 🚀")
