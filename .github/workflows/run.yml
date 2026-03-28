@@ -1,0 +1,23 @@
+name: SP500 Pipeline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 1 * * *"
+
+jobs:
+  run-python:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - run: pip install -r requirements.txt
+
+      - run: python load_sp500_data.py
+        env:
+          DB_URL: ${{ secrets.DB_URL }}
