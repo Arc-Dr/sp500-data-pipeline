@@ -60,7 +60,7 @@ for _, row in sp.iterrows():
 conn.commit()
 print("DIM TABLE LOADED")
 
-tickers = sp["Symbol"].tolist()
+tickers = sp["symbol"].tolist()
 
 # =========================
 # DOWNLOAD DATA
