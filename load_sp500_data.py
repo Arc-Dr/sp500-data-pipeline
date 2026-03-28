@@ -23,6 +23,43 @@ headers = {
 response = requests.get(url, headers=headers)
 
 sp = pd.read_html(response.text)[0]
+
+sp = sp.rename(columns={
+    "Symbol": "symbol",
+    "Security": "security",
+    "GICS Sector": "sector",
+    "GICS Sub-Industry": "sub_industry",
+    "Headquarters Location": "headquarters",
+    "Date added": "date_added",
+    "CIK": "cik"
+})
+
+sp = sp[[
+    "symbol",
+    "security",
+    "sector",
+    "sub_industry",
+    "headquarters",
+    "date_added",
+    "cik"
+]]
+
+for _, row in sp.iterrows():
+    cur.execute(
+        """
+        INSERT INTO dim_sp500 (
+            symbol, security, sector, sub_industry,
+            headquarters, date_added, cik
+        )
+        VALUES (%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT (symbol) DO NOTHING
+        """,
+        tuple(row)
+    )
+
+conn.commit()
+print("DIM TABLE LOADED")
+
 tickers = sp["Symbol"].tolist()
 
 # =========================
