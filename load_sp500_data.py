@@ -3,21 +3,12 @@ import pandas as pd
 import psycopg2
 import os
 
-# =========================
-# DB CONNECTION
-# =========================
 conn = psycopg2.connect(os.environ["DB_URL"])
 cur = conn.cursor()
 
-# =========================
-# GET S&P 500 TICKERS
-# =========================
 sp = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
 tickers = sp['Symbol'].tolist()
 
-# =========================
-# DOWNLOAD DATA
-# =========================
 BATCH_SIZE = 25
 start_date = "2022-01-01"
 
@@ -40,7 +31,6 @@ for i in range(0, len(tickers), BATCH_SIZE):
                     """,
                     (row["Date"], t, row["Close"])
                 )
-
         except:
             pass
 
