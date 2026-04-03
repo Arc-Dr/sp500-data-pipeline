@@ -4,3 +4,4 @@ psycopg2-binary
 lxml
 html5lib
 requests
+python-dotenv
