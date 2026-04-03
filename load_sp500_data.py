@@ -4,6 +4,7 @@ import psycopg2
 import os
 import requests
 from psycopg2.extras import execute_values
+from urllib.parse import urlparse
 
 # =========================
 # DB CONNECTION
@@ -12,7 +13,7 @@ conn = psycopg2.connect(os.environ["DB_URL"])
 cur = conn.cursor()
 
 # =========================
-# GET S&P 500 TICKERS (FIXED 403)
+# GET S&P 500 TICKERS
 # =========================
 url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 
@@ -21,7 +22,6 @@ headers = {
 }
 
 response = requests.get(url, headers=headers)
-
 sp = pd.read_html(response.text)[0]
 
 sp = sp.rename(columns={
@@ -44,6 +44,9 @@ sp = sp[[
     "cik"
 ]]
 
+# =========================
+# INSERT DIM TABLE
+# =========================
 for _, row in sp.iterrows():
     cur.execute(
         """
@@ -61,6 +64,10 @@ conn.commit()
 print("DIM TABLE LOADED")
 
 tickers = sp["symbol"].tolist()
+
+# =========================
+# SHARES DATA
+# =========================
 print("Loading shares...")
 
 shares_data = []
@@ -88,12 +95,15 @@ for row in shares_data:
 
 conn.commit()
 print("SHARES LOADED")
+
 # =========================
-# PROFILE DATA TABLE
+# PROFILE DATA + LOGO
 # =========================
 print("Loading company profiles...")
 
 profile_data = []
+
+API_KEY = "YOUR_API_KEY"
 
 for t in tickers:
     try:
@@ -101,12 +111,30 @@ for t in tickers:
 
         website = info.get("website")
 
-        # LOGO LOGIC
-        logo = info.get("logo_url")
-        if not logo and website:
-            clean_site = website.replace("https://", "").replace("http://", "")
-            logo = f"https://logo.clearbit.com/{clean_site}"
+        # -------- LOGO LOGIC --------
+        logo = None
 
+        if website:
+            try:
+                domain = urlparse(website).netloc
+
+                if domain.startswith("www."):
+                    domain = domain.replace("www.", "")
+
+                logo = f"https://img.logo.dev/{domain}?token={API_KEY}"
+
+            except:
+                logo = None
+
+        # fallback if website missing
+        if not logo:
+            try:
+                domain = t.lower() + ".com"
+                logo = f"https://img.logo.dev/{domain}?token={API_KEY}"
+            except:
+                logo = None
+
+        # -------- CEO --------
         ceo_name = None
         officers = info.get("companyOfficers")
         if officers:
@@ -136,7 +164,9 @@ for t in tickers:
     except:
         pass
 
-# BULK INSERT
+# =========================
+# INSERT PROFILE
+# =========================
 execute_values(
     cur,
     """
@@ -161,8 +191,9 @@ execute_values(
 
 conn.commit()
 print("PROFILE TABLE LOADED")
+
 # =========================
-# DOWNLOAD DATA
+# PRICE DATA
 # =========================
 BATCH_SIZE = 25
 start_date = "2022-01-01"
@@ -185,7 +216,7 @@ for i in range(0, len(tickers), BATCH_SIZE):
             pass
 
 # =========================
-# COMBINE + CLEAN
+# FINAL CLEAN
 # =========================
 final_df = pd.concat(frames, ignore_index=True)
 
@@ -196,7 +227,7 @@ final_df = final_df[["date", "value", "ticker"]]
 print("Download complete. Starting insert...")
 
 # =========================
-# BULK INSERT (FAST)
+# INSERT PRICES
 # =========================
 data_tuples = list(final_df.itertuples(index=False, name=None))
 
