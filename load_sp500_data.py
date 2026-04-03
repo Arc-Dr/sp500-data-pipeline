@@ -89,6 +89,79 @@ for row in shares_data:
 conn.commit()
 print("SHARES LOADED")
 # =========================
+# PROFILE DATA TABLE
+# =========================
+print("Loading company profiles...")
+
+profile_data = []
+
+for t in tickers:
+    try:
+        info = yf.Ticker(t).info
+
+        website = info.get("website")
+
+        # LOGO LOGIC
+        logo = info.get("logo_url")
+        if not logo and website:
+            clean_site = website.replace("https://", "").replace("http://", "")
+            logo = f"https://logo.clearbit.com/{clean_site}"
+
+        ceo_name = None
+        officers = info.get("companyOfficers")
+        if officers:
+            ceo_name = officers[0].get("name")
+
+        profile_data.append((
+            t,
+            info.get("longName"),
+            info.get("sector"),
+            info.get("industry"),
+            info.get("country"),
+            info.get("city"),
+            info.get("state"),
+            info.get("zip"),
+            info.get("address1"),
+            info.get("phone"),
+            website,
+            logo,
+            ceo_name,
+            info.get("fullTimeEmployees"),
+            info.get("longBusinessSummary"),
+            info.get("exchange"),
+            info.get("currency"),
+            info.get("quoteType")
+        ))
+
+    except:
+        pass
+
+# BULK INSERT
+execute_values(
+    cur,
+    """
+    INSERT INTO dim_sp500_profile (
+        symbol, company_name, sector, industry,
+        country, city, state, zip, address,
+        phone, website, logo, ceo, employees,
+        business_summary, exchange, currency, quote_type
+    )
+    VALUES %s
+    ON CONFLICT (symbol)
+    DO UPDATE SET
+        company_name = EXCLUDED.company_name,
+        sector = EXCLUDED.sector,
+        industry = EXCLUDED.industry,
+        website = EXCLUDED.website,
+        logo = EXCLUDED.logo,
+        ceo = EXCLUDED.ceo
+    """,
+    profile_data
+)
+
+conn.commit()
+print("PROFILE TABLE LOADED")
+# =========================
 # DOWNLOAD DATA
 # =========================
 BATCH_SIZE = 25
