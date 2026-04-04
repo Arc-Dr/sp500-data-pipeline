@@ -22,7 +22,8 @@ headers = {
 
 response = requests.get(url, headers=headers)
 
-sp = pd.read_html(response.text)[0]
+from io import StringIO
+sp = pd.read_html(StringIO(response.text))[0]
 
 sp = sp.rename(columns={
     "Symbol": "symbol",
