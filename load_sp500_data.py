@@ -22,8 +22,7 @@ headers = {
 
 response = requests.get(url, headers=headers)
 
-from io import StringIO
-sp = pd.read_html(StringIO(response.text))[0]
+sp = pd.read_html(response.text)[0]
 
 sp = sp.rename(columns={
     "Symbol": "symbol",
@@ -212,129 +211,7 @@ execute_values(
 )
 
 conn.commit()
-
-print("SP500 DATA LOADED 🚀")
-
-# =========================
-# CUSTOM STOCK PRICE TABLE (IPO → TODAY)
-# =========================
-print("Loading custom stock prices...")
-
-custom_tickers = ['UNP','X','PG','MMM','ITW']
-
-frames = []
-
-for t in custom_tickers:
-    try:
-        df = yf.download(t, start="1900-01-01", progress=False)
-
-        temp = df['Close'].reset_index()
-        temp['ticker'] = t
-        temp.columns = ['date','value','ticker']
-
-        frames.append(temp)
-
-    except:
-        pass
-
-custom_df = pd.concat(frames, ignore_index=True)
-custom_df = custom_df.dropna()
-
-custom_df['date'] = pd.to_datetime(custom_df['date']).dt.date
-
-# IPO + % CHANGE
-custom_df = custom_df.sort_values(['ticker','date'])
-custom_df['ipo_price'] = custom_df.groupby('ticker')['value'].transform('first')
-custom_df['pct_change'] = (custom_df['value'] - custom_df['ipo_price']) / custom_df['ipo_price']
-
-# INSERT
-execute_values(
-    cur,
-    """
-    INSERT INTO custom_stock_prices (date, value, ticker, ipo_price, pct_change)
-    VALUES %s
-    ON CONFLICT DO NOTHING
-    """,
-    list(custom_df[['date','value','ticker','ipo_price','pct_change']].itertuples(index=False, name=None))
-)
-
-conn.commit()
-print("CUSTOM PRICE TABLE LOADED")
-
-# =========================
-# CUSTOM STOCK PROFILE TABLE (FULL LIKE MAIN)
-# =========================
-print("Loading custom stock profiles...")
-
-profile_rows = []
-
-for t in custom_tickers:
-    try:
-        info = yf.Ticker(t).info
-
-        website = info.get("website")
-
-        # LOGO LOGIC (same as your main script)
-        logo = info.get("logo_url")
-        if not logo and website:
-            clean_site = website.replace("https://", "").replace("http://", "")
-            logo = f"https://logo.clearbit.com/{clean_site}"
-
-        ceo_name = None
-        officers = info.get("companyOfficers")
-        if officers:
-            ceo_name = officers[0].get("name")
-
-        profile_rows.append((
-            t,
-            info.get("longName"),
-            info.get("sector"),
-            info.get("industry"),
-            info.get("country"),
-            info.get("city"),
-            info.get("state"),
-            info.get("zip"),
-            info.get("address1"),
-            info.get("phone"),
-            website,
-            logo,
-            ceo_name,
-            info.get("fullTimeEmployees"),
-            info.get("longBusinessSummary"),
-            info.get("exchange"),
-            info.get("currency"),
-            info.get("quoteType")
-        ))
-
-    except:
-        pass
-
-# BULK INSERT
-execute_values(
-    cur,
-    """
-    INSERT INTO custom_stock_profile (
-        symbol, company_name, sector, industry,
-        country, city, state, zip, address,
-        phone, website, logo, ceo, employees,
-        business_summary, exchange, currency, quote_type
-    )
-    VALUES %s
-    ON CONFLICT (symbol)
-    DO UPDATE SET
-        company_name = EXCLUDED.company_name,
-        sector = EXCLUDED.sector,
-        industry = EXCLUDED.industry,
-        website = EXCLUDED.website,
-        logo = EXCLUDED.logo,
-        ceo = EXCLUDED.ceo
-    """,
-    profile_rows
-)
-
-conn.commit()
-print("CUSTOM PROFILE TABLE LOADED")
-
 cur.close()
 conn.close()
 
+print("SP500 DATA LOADED 🚀")
